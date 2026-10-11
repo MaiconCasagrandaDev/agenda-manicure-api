@@ -1,0 +1,32 @@
+{
+  "name": "agenda-manicure-api",
+  "version": "1.0.0",
+  "description": "API de agendamento para manicure",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MaiconCasagrandaDev/agenda-manicure-api.git"
+  },
+  "keywords": [],
+  "author": "Maicon Casagranda",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/MaiconCasagrandaDev/agenda-manicure-api/issues"
+  },
+  "homepage": "https://github.com/MaiconCasagrandaDev/agenda-manicure-api#readme",
+  "dependencies": {
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
