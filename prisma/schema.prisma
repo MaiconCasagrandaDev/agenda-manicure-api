@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,98 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELED
+  DONE
+}
+
+model Service {
+  id                Int                  @id @default(autoincrement())
+  name              String
+  price             Decimal              @db.Decimal(10, 2)
+  priceIsStartingAt Boolean              @default(false)
+  durationMinutes   Int
+  imageUrl          String?
+  active            Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  items             AppointmentService[]
+
+  @@map("services")
+}
+
+model Client {
+  id              Int           @id @default(autoincrement())
+  name            String
+  phone           String        @unique
+  notes           String?
+  whatsappOptInAt DateTime?
+  createdAt       DateTime      @default(now())
+  appointments    Appointment[]
+
+  @@map("clients")
+}
+
+model Appointment {
+  id                 Int                  @id @default(autoincrement())
+  clientId           Int
+  startsAt           DateTime
+  endsAt             DateTime
+  totalPrice         Decimal              @db.Decimal(10, 2)
+  status             AppointmentStatus    @default(PENDING)
+  notes              String?
+  confirmedAt        DateTime?
+  canceledAt         DateTime?
+  confirmationSentAt DateTime?
+  reminderSentAt     DateTime?
+  createdAt          DateTime             @default(now())
+  client             Client               @relation(fields: [clientId], references: [id])
+  items              AppointmentService[]
+
+  @@index([startsAt])
+  @@map("appointments")
+}
+
+model AppointmentService {
+  id              Int         @id @default(autoincrement())
+  appointmentId   Int
+  serviceId       Int
+  serviceName     String
+  price           Decimal     @db.Decimal(10, 2)
+  durationMinutes Int
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service         Service     @relation(fields: [serviceId], references: [id])
+
+  @@map("appointment_services")
+}
+
+model WorkingHours {
+  id          Int @id @default(autoincrement())
+  weekday     Int // 0 = domingo ... 6 = sábado
+  startMinute Int // 540 = 09:00
+  endMinute   Int // 1080 = 18:00
+
+  @@map("working_hours")
+}
+
+model TimeOff {
+  id       Int      @id @default(autoincrement())
+  startsAt DateTime
+  endsAt   DateTime
+  reason   String?
+
+  @@index([startsAt])
+  @@map("time_off")
+}
+
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@map("admin_users")
 }
