@@ -2,8 +2,6 @@ import "dotenv/config"; // precisa vir antes do prisma.ts, que lê o DATABASE_UR
 import { prisma } from "../src/lib/prisma.js";
 import { hashPassword } from "../src/lib/password.js";
 
-const MIN_PASSWORD_LENGTH = 12;
-
 // 09:00 -> 540 (minutos desde a meia-noite)
 const toMinutes = (hours: number, minutes = 0) => hours * 60 + minutes;
 
