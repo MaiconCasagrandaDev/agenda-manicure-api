@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { prisma } from "./lib/prisma.js";
 import { adminRouter } from "./routes/admin.js";
+import { appointmentsRouter } from "./routes/appointments.js";
 
 const port = 3000;
 const app = express();
@@ -38,6 +39,7 @@ app.get("/services", async (_, res) => {
 });
 
 app.use("/admin", adminRouter); 
+app.use("/appointments", appointmentsRouter);
 
 app.listen(port, () => {
     console.log(`Servidor rodando na porta ${port}`);
