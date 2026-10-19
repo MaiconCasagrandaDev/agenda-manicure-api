@@ -96,7 +96,23 @@ model AdminUser {
   id           Int      @id @default(autoincrement())
   email        String   @unique
   passwordHash String
+  failedLoginAttempts Int            @default(0)
+  lockedUntil         DateTime?
   createdAt    DateTime @default(now())
+  sessions            AdminSession[]
 
   @@map("admin_users")
+}
+
+model AdminSession {
+  id          Int       @id @default(autoincrement())
+  adminUserId Int
+  tokenHash   String    @unique         // hash do código do cookie (o código em si nunca fica no banco)
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime  @default(now()) // para o limite de 7 dias sem uso
+  expiresAt   DateTime                  // limite máximo: 30 dias depois do login
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@map("admin_sessions")
 }

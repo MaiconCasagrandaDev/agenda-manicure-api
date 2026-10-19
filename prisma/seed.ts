@@ -24,17 +24,19 @@ const WORKING_HOURS = [
     { weekday: 6, startMinute: toMinutes(13), endMinute: toMinutes(16) },
 ];
 
+// Regra de senha (OWASP/NIST, sem verificação em duas etapas): mínimo 15, máximo 128
+const PASSWORD_MIN = 15;
+const PASSWORD_MAX = 128;
+
 function readAdminCredentials() {
     const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
     const password = process.env.ADMIN_PASSWORD;
 
     if (!email || !password) {
-        throw new Error("Defina ADMIN_EMAIL e ADMIN_PASSWORD no arquivo .env");
+        throw new Error("Defina ADMIN_EMAIL e ADMIN_PASSWORD no .env");
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-        throw new Error(
-        `ADMIN_PASSWORD precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`,
-        );
+    if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
+        throw new Error(`ADMIN_PASSWORD precisa ter entre ${PASSWORD_MIN} e ${PASSWORD_MAX} caracteres`);
     }
 
     return { email, password };
