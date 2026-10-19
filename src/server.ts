@@ -6,6 +6,7 @@ import { adminRouter } from "./routes/admin.js";
 
 const port = 3000;
 const app = express();
+app.disable("x-powered-by");
 
 app.use(cors({ origin: process.env.WEB_URL, credentials: true }));
 app.use(express.json({ limit: "10kb" }));
