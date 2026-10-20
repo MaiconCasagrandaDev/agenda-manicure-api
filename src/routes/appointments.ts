@@ -1,11 +1,10 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { prisma } from "../lib/prisma.js";
-import { parseLocalDate, parseTimeToMinutes, validateSlot } from "../lib/schedule.js";
+import { MAX_SERVICES, parseLocalDate, parseTimeToMinutes, validateSlot } from "../lib/schedule.js";
 
 export const appointmentsRouter = Router();
 
-const MAX_SERVICES = 3;
 // Letras (com acento), espaço, hífen e apóstrofo — mesma regra do front
 const NAME_PATTERN = /^\p{L}[\p{L}' -]*$/u;
 // Celular brasileiro no formato internacional: +55 + DDD + 9 + 8 dígitos
