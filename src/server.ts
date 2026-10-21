@@ -6,6 +6,7 @@ import { adminRouter } from "./routes/admin.js";
 import { appointmentsRouter } from "./routes/appointments.js";
 import { availabilityRouter } from "./routes/availability.js";
 import { adminAppointmentsRouter } from "./routes/adminAppointments.js";
+import { adminTimeOffRouter } from "./routes/adminTimeOff.js";
 
 const port = 3000;
 const app = express();
@@ -44,6 +45,7 @@ app.use("/admin", adminRouter);
 app.use("/appointments", appointmentsRouter);
 app.use("/availability", availabilityRouter);
 app.use("/admin/appointments", adminAppointmentsRouter);
+app.use("/admin/time-off", adminTimeOffRouter);
 
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
