@@ -23,6 +23,7 @@ adminAppointmentsRouter.use((_req, res, next) => {
 // O que o painel precisa saber de cada agendamento
 const APPOINTMENT_SELECT = {
   id: true,
+  customerName: true,
   startsAt: true,
   endsAt: true,
   totalPrice: true,

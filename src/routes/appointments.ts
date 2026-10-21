@@ -102,6 +102,7 @@ appointmentsRouter.post("/", bookingLimiter, async (req, res) => {
         return tx.appointment.create({
             data: {
             clientId: client.id,
+            customerName: `${firstName} ${lastName}`,
             startsAt: slot.startsAt,
             endsAt: slot.endsAt,
             totalPrice: (totalCents / 100).toFixed(2), // texto: o Decimal não perde centavos

@@ -43,6 +43,7 @@ model Client {
 model Appointment {
   id                 Int                  @id @default(autoincrement())
   clientId           Int
+  customerName       String
   startsAt           DateTime
   endsAt             DateTime
   totalPrice         Decimal              @db.Decimal(10, 2)
