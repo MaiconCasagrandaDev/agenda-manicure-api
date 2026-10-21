@@ -23,7 +23,7 @@ adminAppointmentsRouter.use((_req, res, next) => {
 // O que o painel precisa saber de cada agendamento
 const APPOINTMENT_SELECT = {
   id: true,
-  customerName: true,
+  customerName: true, // nome digitado no pedido
   startsAt: true,
   endsAt: true,
   totalPrice: true,
@@ -37,7 +37,7 @@ const APPOINTMENT_SELECT = {
 // Ações permitidas: de qual status para qual status
 const ACTIONS = {
   confirm: { from: "PENDING", to: "CONFIRMED" }, // aceitar o pedido
-  decline: { from: "PENDING", to: "CANCELED" }, // recusar o pedido
+  decline: { from: "PENDING", to: "CANCELED" },  // recusar o pedido
   cancel: { from: "CONFIRMED", to: "CANCELED" }, // cancelar um confirmado
 } as const;
 
@@ -70,9 +70,7 @@ adminAppointmentsRouter.get("/", async (req, res) => {
   }
 
   const date =
-    req.query.date === undefined
-      ? todayInBrazil()
-      : parseLocalDate(req.query.date);
+    req.query.date === undefined ? todayInBrazil() : parseLocalDate(req.query.date);
   if (!date) {
     res.status(400).json({ error: "Data inválida." });
     return;
@@ -94,7 +92,7 @@ adminAppointmentsRouter.get("/", async (req, res) => {
   res.json({ date: formatLocalDate(date), pendingCount, appointments });
 });
 
-// PATCH /admin/appointments/5   body: { "action": "confirm" }
+// PATCH /admin/appointments/5   body: { "action": "cancel", "blockSlot": true }
 adminAppointmentsRouter.patch("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   const action = req.body?.action;
@@ -104,32 +102,46 @@ adminAppointmentsRouter.patch("/:id", async (req, res) => {
   }
 
   const { from, to } = ACTIONS[action];
+  // Ao cancelar OU recusar, a Carol pode bloquear o horário
+  const blockSlot = (action === "cancel" || action === "decline") && req.body?.blockSlot === true;
   const now = new Date();
 
-  // updateMany com o status esperado no "where": só muda se AINDA estiver
-  // no status certo. Evita, por exemplo, confirmar algo que já foi cancelado
-  // em outra aba do navegador.
-  const result = await prisma.appointment.updateMany({
-    where: { id, status: from },
-    data: {
-      status: to,
-      ...(to === "CONFIRMED" && { confirmedAt: now }),
-      ...(to === "CANCELED" && { canceledAt: now }),
-    },
+  // Transação: mudar o status e (se pedido) bloquear o horário, tudo ou nada
+  const appointment = await prisma.$transaction(async (tx) => {
+    // Só muda se AINDA estiver no status esperado
+    const result = await tx.appointment.updateMany({
+      where: { id, status: from },
+      data: {
+        status: to,
+        ...(to === "CONFIRMED" && { confirmedAt: now }),
+        ...(to === "CANCELED" && { canceledAt: now }),
+      },
+    });
+    if (result.count === 0) return null;
+
+    const updated = await tx.appointment.findUnique({
+      where: { id },
+      select: APPOINTMENT_SELECT,
+    });
+
+    if (blockSlot && updated) {
+      // Mesmo horário vira um bloqueio: não volta a aparecer para as clientes
+      await tx.timeOff.create({
+        data: {
+          startsAt: updated.startsAt,
+          endsAt: updated.endsAt,
+          reason: `Cancelado pela profissional (${updated.customerName})`,
+        },
+      });
+    }
+
+    return updated;
   });
 
-  if (result.count === 0) {
-    res
-      .status(409)
-      .json({ error: "Esse agendamento já foi alterado. Atualize a página." });
+  if (!appointment) {
+    res.status(409).json({ error: "Esse agendamento já foi alterado. Atualize a página." });
     return;
   }
-
-  // Devolve o agendamento atualizado (o front usa para montar a mensagem do WhatsApp)
-  const appointment = await prisma.appointment.findUnique({
-    where: { id },
-    select: APPOINTMENT_SELECT,
-  });
   res.json(appointment);
 });
 
@@ -147,9 +159,7 @@ adminAppointmentsRouter.post("/:id/reminder", async (req, res) => {
   });
 
   if (result.count === 0) {
-    res
-      .status(409)
-      .json({ error: "Só é possível lembrar agendamentos confirmados." });
+    res.status(409).json({ error: "Só é possível lembrar agendamentos confirmados." });
     return;
   }
   res.status(204).end();
