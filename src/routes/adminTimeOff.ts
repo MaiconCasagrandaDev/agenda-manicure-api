@@ -30,12 +30,20 @@ type Parsed = { intervals: Interval[] } | { error: string };
 
 // Dia inteiro: da meia-noite até a meia-noite seguinte (em Brasília)
 function wholeDay(date: LocalDate): Interval {
-  return { startsAt: localToUtc(date, 0), endsAt: localToUtc(addDays(date, 1), 0) };
+  return {
+    startsAt: localToUtc(date, 0),
+    endsAt: localToUtc(addDays(date, 1), 0),
+  };
 }
 
 // Manhã ou tarde do EXPEDIENTE daquele dia (ex.: quinta 13:00–18:00, sábado 13:00–16:00)
-async function shiftOf(date: LocalDate, shift: "morning" | "afternoon"): Promise<Interval | null> {
-  const blocks = await prisma.workingHours.findMany({ where: { weekday: weekdayOf(date) } });
+async function shiftOf(
+  date: LocalDate,
+  shift: "morning" | "afternoon",
+): Promise<Interval | null> {
+  const blocks = await prisma.workingHours.findMany({
+    where: { weekday: weekdayOf(date) },
+  });
   const part = blocks.filter((b) =>
     shift === "morning" ? b.startMinute < NOON : b.startMinute >= NOON,
   );
@@ -46,12 +54,33 @@ async function shiftOf(date: LocalDate, shift: "morning" | "afternoon"): Promise
   return { startsAt: localToUtc(date, start), endsAt: localToUtc(date, end) };
 }
 
+// Ela atende nesse dia da semana? (domingo, por exemplo, não)
+async function isOpenOn(date: LocalDate): Promise<boolean> {
+  const count = await prisma.workingHours.count({
+    where: { weekday: weekdayOf(date) },
+  });
+  return count > 0;
+}
+
+// Algum dia do período tem atendimento? (basta olhar até 7 dias: uma semana passa por todos os dias)
+async function hasOpenDay(
+  start: LocalDate,
+  totalDays: number,
+): Promise<boolean> {
+  for (let i = 0; i < Math.min(totalDays, 7); i++) {
+    if (await isOpenOn(addDays(start, i))) return true;
+  }
+  return false;
+}
+
 // Transforma o pedido do painel em intervalos de tempo exatos
 async function parseRequest(body: Record<string, unknown>): Promise<Parsed> {
   switch (body.kind) {
     case "day": {
       const date = parseLocalDate(body.date);
       if (!date) return { error: "Data inválida." };
+      if (!(await isOpenOn(date)))
+        return { error: "Você já não atende nesse dia." };
       return { intervals: [wholeDay(date)] };
     }
 
@@ -73,7 +102,8 @@ async function parseRequest(body: Record<string, unknown>): Promise<Parsed> {
       const date = parseLocalDate(body.date);
       if (!date) return { error: "Data inválida." };
       const interval = await shiftOf(date, body.kind);
-      if (!interval) return { error: "Não há atendimento nesse período do dia." };
+      if (!interval)
+        return { error: "Não há atendimento nesse período do dia." };
       return { intervals: [interval] };
     }
 
@@ -84,7 +114,13 @@ async function parseRequest(body: Record<string, unknown>): Promise<Parsed> {
       if (!date || from === null || to === null || to <= from) {
         return { error: "Horário inválido." };
       }
-      return { intervals: [{ startsAt: localToUtc(date, from), endsAt: localToUtc(date, to) }] };
+      if (!(await isOpenOn(date)))
+        return { error: "Você já não atende nesse dia." }; 
+      return {
+        intervals: [
+          { startsAt: localToUtc(date, from), endsAt: localToUtc(date, to) },
+        ],
+      };
     }
 
     case "period": {
@@ -94,9 +130,18 @@ async function parseRequest(body: Record<string, unknown>): Promise<Parsed> {
 
       const startsAt = localToUtc(start, 0);
       const endsAt = localToUtc(addDays(end, 1), 0); // inclui o último dia inteiro
-      if (endsAt <= startsAt) return { error: "A data final precisa ser depois da inicial." };
+      if (endsAt <= startsAt)
+        return { error: "A data final precisa ser depois da inicial." };
       if (endsAt.getTime() - startsAt.getTime() > MAX_PERIOD_DAYS * DAY_MS) {
-        return { error: `O período pode ter no máximo ${MAX_PERIOD_DAYS} dias.` };
+        return {
+          error: `O período pode ter no máximo ${MAX_PERIOD_DAYS} dias.`,
+        };
+      }
+      const totalDays = Math.round(
+        (endsAt.getTime() - startsAt.getTime()) / DAY_MS,
+      );
+      if (!(await hasOpenDay(start, totalDays))) {
+        return { error: "Você já não atende nesses dias." };
       }
       return { intervals: [{ startsAt, endsAt }] };
     }
@@ -134,7 +179,9 @@ adminTimeOffRouter.post("/", async (req, res) => {
 
   // Motivo é opcional e só a Carol vê
   const reason =
-    typeof body.reason === "string" ? body.reason.trim().slice(0, MAX_REASON_LENGTH) || null : null;
+    typeof body.reason === "string"
+      ? body.reason.trim().slice(0, MAX_REASON_LENGTH) || null
+      : null;
 
   // Tem cliente marcada (pendente ou confirmada) nesses horários?
   if (body.force !== true) {
@@ -160,7 +207,9 @@ adminTimeOffRouter.post("/", async (req, res) => {
 
     if (conflicts.length > 0) {
       // 409: não bloqueia ainda; o painel mostra o aviso e ela decide
-      res.status(409).json({ error: "Existem clientes marcadas nesse período.", conflicts });
+      res
+        .status(409)
+        .json({ error: "Existem clientes marcadas nesse período.", conflicts });
       return;
     }
   }
