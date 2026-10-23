@@ -25,6 +25,17 @@ const MAX_PERIOD_DAYS = 90; // férias de até 90 dias por bloqueio
 const MAX_SELECTED_DAYS = 31; // dias marcados de uma vez no calendário
 const NOON = 12 * 60; // o que começa antes do meio-dia é "manhã"
 
+// O que o painel precisa saber de cada cliente marcada (aviso e WhatsApp)
+const CONFLICT_SELECT = {
+  id: true,
+  customerName: true,
+  startsAt: true,
+  endsAt: true,
+  status: true,
+  client: { select: { phone: true } },
+  items: { select: { serviceName: true }, orderBy: { id: "asc" } },
+} as const;
+
 type Interval = { startsAt: Date; endsAt: Date };
 type Parsed = { intervals: Interval[] } | { error: string };
 
@@ -162,6 +173,8 @@ adminTimeOffRouter.get("/", async (_req, res) => {
 });
 
 // POST /admin/time-off   body: { kind, date?, dates?, from?, to?, startDate?, endDate?, reason?, force? }
+// Sem force: se tiver cliente marcada → 409 com a lista.
+// Com force: cancela essas clientes e cria o bloqueio, tudo junto.
 adminTimeOffRouter.post("/", async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
 
@@ -183,9 +196,12 @@ adminTimeOffRouter.post("/", async (req, res) => {
       ? body.reason.trim().slice(0, MAX_REASON_LENGTH) || null
       : null;
 
-  // Tem cliente marcada (pendente ou confirmada) nesses horários?
-  if (body.force !== true) {
-    const conflicts = await prisma.appointment.findMany({
+  const force = body.force === true;
+
+  // Tudo ou nada: se o bloqueio falhar, ninguém é cancelado
+  const result = await prisma.$transaction(async (tx) => {
+    // Clientes marcadas (pendentes ou confirmadas) nesses horários
+    const conflicts = await tx.appointment.findMany({
       where: {
         status: { in: ["PENDING", "CONFIRMED"] },
         OR: parsed.intervals.map((i) => ({
@@ -194,37 +210,42 @@ adminTimeOffRouter.post("/", async (req, res) => {
         })),
       },
       orderBy: { startsAt: "asc" },
-      select: {
-        id: true,
-        customerName: true,
-        startsAt: true,
-        endsAt: true,
-        status: true,
-        client: { select: { phone: true } },
-        items: { select: { serviceName: true }, orderBy: { id: "asc" } },
-      },
+      select: CONFLICT_SELECT,
     });
 
-    if (conflicts.length > 0) {
-      // 409: não bloqueia ainda; o painel mostra o aviso e ela decide
-      res
-        .status(409)
-        .json({ error: "Existem clientes marcadas nesse período.", conflicts });
-      return;
+    // Sem force: não mexe em nada, o painel mostra o aviso e ela decide
+    if (conflicts.length > 0 && !force) {
+      return { conflicts, timeOffs: null };
     }
+
+    if (conflicts.length > 0) {
+      await tx.appointment.updateMany({
+        where: {
+          id: { in: conflicts.map((c) => c.id) },
+          status: { in: ["PENDING", "CONFIRMED"] },
+        },
+        data: { status: "CANCELED" },
+      });
+    }
+
+    const timeOffs = await tx.timeOff.createManyAndReturn({
+      data: parsed.intervals.map((i) => ({ startsAt: i.startsAt, endsAt: i.endsAt, reason })),
+      select: { id: true, startsAt: true, endsAt: true, reason: true },
+    });
+
+    return { conflicts, timeOffs };
+  });
+
+  if (result.timeOffs === null) {
+    res.status(409).json({
+      error: "Existem clientes marcadas nesse período.",
+      conflicts: result.conflicts,
+    });
+    return;
   }
 
-  // Cria todos os bloqueios juntos (tudo ou nada)
-  const created = await prisma.$transaction(
-    parsed.intervals.map((i) =>
-      prisma.timeOff.create({
-        data: { startsAt: i.startsAt, endsAt: i.endsAt, reason },
-        select: { id: true, startsAt: true, endsAt: true, reason: true },
-      }),
-    ),
-  );
-
-  res.status(201).json(created);
+  // canceled = quem precisa ser avisada no WhatsApp (vazio se não tinha ninguém)
+  res.status(201).json({ timeOffs: result.timeOffs, canceled: result.conflicts });
 });
 
 // DELETE /admin/time-off/5 → desbloqueia
